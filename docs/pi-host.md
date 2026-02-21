@@ -7,7 +7,7 @@ Raspberry Pi 5 は MicroPython を実行する Pico 2 W に表示指示を送る
 python3 host/command_server.py --bind 0.0.0.0 --port 5000
 ```
 - Pico の `src/main.py` が `TCP_SERVER_HOST`/`PORT` に合わせてこのポートに接続すると、受信したコマンドを処理します。
-- 接続中は Pico からのレスポンスが標準出力に出てくるので、正常性確認とログに使えます。
+- `src/config.py` の `TCP_SERVER_HOST` を実際の Raspberry Pi 5 の IP または mDNS 名（例：`raspberrypi.local`）に書き換えてからデバイスにデプロイしてください。IP は環境ごとに異なるため Git には含めず、各自で上書きする運用とします。- 接続中は Pico からのレスポンスが標準出力に出てくるので、正常性確認とログに使えます。
 
 ## 代表的なコマンド
 - `mode status_datetime {"date":"2026/02/22","time":"00:15","weather":"Cloudy","temp":"12°C"}`

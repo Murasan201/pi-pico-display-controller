@@ -33,6 +33,10 @@ Raspberry Pi 5（ホスト）および Raspberry Pi Pico 2 W を中心に、WAVE
    - Pi 5：表示指示を生成し、ソケットを通じて Pico へ送信。ログ保存・監視・必要時のコマンド再送を担当。`host/command_server.py` によりコマンドサーバ＋ CLI を実装し、連携したドキュメントを `docs/pi-host.md` にまとめている。
    - Pico：受信データを解析して `display_manager` を呼び出し、画面再描画を実行。タッチイベントやステータスは Pico が独自に Pi へ通知可能。
 
+## 設定値の管理
+- `src/config.py` に Pico が接続する Raspberry Pi 5 のホスト名/IP を設定します（例：`raspberrypi.local` や `192.168.1.42`）。本番環境で使う実際のアドレスはこのファイルか起動スクリプト内で上書きしてください。
+- Wi-Fi SSID/PASSWORD は `src/secrets.py` に記述しますが、このファイルは `.gitignore` に追加し、GitHub へのアップロード対象から外すことで IP/認証情報の漏洩を防ぎます。
+- 複数環境で運用する場合は `config.py`/`secrets.py` をテンプレート化し、各端末でコピーしてから実際の値を記入する運用が安全です。
 ## ソフトウェア構成（Pico 側）
 - **`main.py`（MicroPython）**
   - Wi-Fi 接続、ソケットクライアント、データ受信ループを実装。
