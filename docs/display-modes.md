@@ -1,0 +1,33 @@
+# 表示モード設計
+
+Raspberry Pi 5 からの指示で Raspberry Pi Pico 2 W 側の表示内容を切り替えるため、MicroPython で以下の表示モードを用意します。複数モードの切り替えは TCP ソケット（JSON）経由で `cmd: "set_mode"` を受信することで行い、Pico は `DisplayManager` を介してモードごとの描画ルーチンに移ります。
+
+## モード一覧
+| モード名 | 内容 | 主なデータ | 備考 |
+| --- | --- | --- | --- |
+| `status` | デバイス／環境のステータス表示。時刻・Wi-Fi 信号・CPU 温度などをテキスト＋グラフで更新。 | `{ "text_sections": ["Online", "Temp: 48°C"] }` | 背景は単色、バックライトは常時点灯。タッチを休止。 |
+| `image` | MicroSD から指定ファイルを読み込み、フルスクリーン表示。 | `{ "file": "welcome.bmp", "stretch": "fit" }` | ピクチャが存在しない場合はプレースホルダ。バックライトは明るめ。 |
+| `sensor` | 外部センサ／Pi から送られてくる値（数値・バー）を視覚化。 | `{ "value": 72, "unit": "%", "trend": "up" }` | レーダー・ゲージなどを組み合わせて描画。タッチで即時データ再取得をリクエスト可。 |
+| `message` | 任意テキスト＋アイコンを表示。通知用途。 | `{ "title": "Alert", "body": "Dock undocked", "icon": "⚠️" }` | 文字サイズ・カラーを動的に指定できるように。 |
+| `custom` | 表示レイヤーを合成する API。Pi が直接 `layers` 配列で色・位置を指定。 | `layers: [{ "type": "rect", "color": "#f0f0f0" }, ...]` | Pi 側で柔軟にレイアウトを構築したい場面用。 |
+
+## モード切替のフロー
+1. Pi 5 が TCP ソケット経由で以下の JSON を送信：
+   ```json
+   { "cmd": "set_mode", "mode": "status", "payload": { ... } }
+   ```
+2. Pico は `mode` を検証して `DisplayManager.activate_mode(mode, payload)` を呼ぶ。
+3. 必要に応じて `payload` を検証・補完し、該当モードの描画ルーチン（`draw_status(payload)` など）に委ねる。
+4. モードを切り替える際は前の状態をクリアし、タッチ/バックライトの設定をモード固有に調整する。
+5. モード変更後、Pico は `{ "status": "mode_set", "mode": "status" }` を Pi に返信する。
+
+## Pi からの操作例
+- `status` モードへ切り替える（JSON 内に表示テキストを含めて）
+- `image` モードを要求し、MicroSD 上の `logo.bmp` を表示するようパスを渡す
+- `custom` モードではレイヤー配列を組んで細かい描画を指示する
+
+## 拡張ポイント
+- モードごとに予備的なリフレッシュ頻度（`refresh_ms`）を設定し、Pi が必要時に `cmd: "refresh"` で再描画をトリガーできる仕組み。
+- Pico から `touch` イベント（例：`{ "cmd": "event", "type": "touch", "pos": [x, y] }`）を Pi に通知し、モードによってタッチハンドラを分岐。
+
+このドキュメントは `docs/` 配下で管理し、モード追加・通信仕様変更時に随時更新してください。
