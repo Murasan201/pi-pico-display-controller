@@ -60,7 +60,29 @@ Raspberry Pi 5（ホスト）および Raspberry Pi Pico 2 W を中心に、WAVE
 2. Wi-Fi 接続が確立後、Pi 5 側の TCP サーバとセッションを確立。
 3. Pi 5 から表示コマンドを送信／Pico が描画。
 4. Pico はタッチや状態変化を Pi へ返送し、Pi 側でログ・フロー制御を行う。
-5. 必要なコード変更やリソース更新後は、Pi 側で再ビルドした MicroPython ファイルを Pico に書き込む（Thonny/picotool など）。
+5. 必要なコード変更やリソース更新後は、Pi 側で再ビルドした MicroPython ファイルを Pico に書き込む（CLI ベース）。
+
+## MicroPython ビルド + 書き込み（CLI）
+1. **環境整備**
+   - `mpremote`、`picotool`、`mpy-cross` などを Raspberry Pi 5 上にインストール（`sudo apt install mpremote picotool python3-pip` + `pip3 install mpy-cross` など）。
+2. **ビルド／構成**
+   - `main.py` や依存モジュールを `src/` に置いたら `mpy-cross` で `.mpy` を生成し、`build/` へコピーすることで起動時間を短縮。
+   - 背景画像・アイコンなどのアセットは `assets/` 配下で整理し、`mpremote fs cp` で Pico 側に転送。
+3. **書き込み**
+   - BOOTSEL モードで Pico を接続したら、CLI で UF2 をロード：
+     ```bash
+     picotool load build/main.uf2
+     ```
+   - MicroPython が既に稼働しているときは、以下のように直接ファイルをコピー：
+     ```bash
+     mpremote connect usb0 fs cp src/main.py :/main.py
+     mpremote connect usb0 fs mkdir -p assets
+     mpremote connect usb0 fs cp assets/* :/assets/
+     mpremote connect usb0 run main.py
+     ```
+   - 接続先の USB デバイス名（`usb0` や `/dev/ttyACM0`）は `mpremote list` で確認し、必要に応じて指定し直す。
+4. **デプロイスクリプト例**
+   - `scripts/deploy.sh` などを作って `git pull` → `./scripts/deploy.sh` で書き込み・再起動まで自動化するとミスが減る。
 
 ## その他
 - **電源**：USB 給電のみで十分。Pico 自身が 5V レギュレータ（RT9193-33）を搭載しているので、Pi 側の USB 1 ポートから供給可能。追加の AC アダプタ不要。
