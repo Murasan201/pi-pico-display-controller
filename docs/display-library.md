@@ -51,6 +51,13 @@ class DisplayManager:
 - `draw_weather_block(panel, data)` / `draw_task_list(panel, tasks)`
   - ST7789 用に座標とサイズを固定し、アイコンビットマップ・バー・テキストを描画する共通関数。
 
+## 背景画像 (JPEG) のサポート
+- `set_background_image(panel, payload)`
+  - `payload["background"]` に `type: "jpeg"` を含む辞書を渡すと、JPEG ファイルやバイナリをデコードして背景に敷く。
+  - 通常は MicroSD 上の `images/` などに JPEG を置き、Pi からは `"source": "images/scene.jpg"` のようなパスを送るだけで済む。
+  - 直接転送したい場合は Base64 文字列 (`payload["background"]["data"]`) を Pico が受信して一時ファイルに書き出し、`jpgdec` や `picdecoder` など MicroPython 互換の JPEG デコーダで描画する。ただしサイズによってメモリを圧迫するため、事前に Pi 側でリサイズしておく。
+  - 背景は `panel.blit()` で描画すると、後から描画するテキスト／タスクの読みやすさを考慮して、オーバーレイ用の半透明レイヤやダークフィルタを配置できる。
+
 ## 通信／データ要求のヘルパー
 - `listen_for_commands()`
   - Wi-Fi ソケットを扱うメインループ。接続が切れた場合は再接続を試みる。
