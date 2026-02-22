@@ -1,4 +1,5 @@
 from machine import Pin, SPI
+from touch_controller import TouchController
 import utime
 import ubinascii
 import os
@@ -26,6 +27,9 @@ STATUS_DEFAULTS = {
 
 BACKGROUND_FILENAME = "/background.jpg"
 
+BUTTON_LABELS = ("MODE", "UP", "DOWN")
+BUTTON_HEIGHT = 28
+BUTTON_MARGIN = 6
 
 class DisplayManager:
     WIDTH = 240
@@ -62,6 +66,16 @@ class DisplayManager:
             "tasks_short": self._draw_tasks,
             "free_text": self._draw_free_text,
         }
+        self.touch_controller = TouchController(
+            sck=Pin(10),
+            mosi=Pin(11),
+            miso=Pin(12),
+            cs=16,
+            irq=17,
+            width=DisplayManager.WIDTH,
+            height=DisplayManager.HEIGHT,
+        )
+        self._active_button = None
 
     def set_mode(self, mode, payload):
         handler = self.handlers.get(mode)
@@ -81,6 +95,7 @@ class DisplayManager:
         data = prepare_status_data(payload)
         self.panel.fill(0)
         self._apply_background(data.get("background"))
+        self._draw_buttons()
         primary_color = data.get("primary_color", color565(255, 255, 255))
         secondary_color = data.get("secondary_color", color565(200, 200, 200))
         self.panel.text(FONT_Default, data["date"], 12, 4, primary_color)
@@ -95,6 +110,7 @@ class DisplayManager:
         tasks = normalize_tasks(payload)
         self.panel.fill(0)
         self._apply_background(payload.get("background"))
+        self._draw_buttons()
         self.panel.text(FONT_Default, "Short Tasks", 12, 2, color565(255, 255, 255))
         y = 30
         for item in tasks:
@@ -113,12 +129,50 @@ class DisplayManager:
         lines = wrap_text_lines(text or "", 22)
         self.panel.fill(0)
         self._apply_background(payload.get("background"))
+        self._draw_buttons()
         y = 10
         for line in lines:
             self.panel.text(FONT_Default, line, 12, y, color565(255, 255, 255))
             y += 18
             if y > DisplayManager.HEIGHT - 10:
                 break
+
+    def _draw_buttons(self):
+        btn_height = BUTTON_HEIGHT
+        btn_width = (DisplayManager.WIDTH - BUTTON_MARGIN * 2) // len(BUTTON_LABELS)
+        for idx, label in enumerate(BUTTON_LABELS):
+            x = BUTTON_MARGIN + idx * btn_width
+            self.panel.fill_rect(x, 0, btn_width - 2, btn_height, color565(30, 30, 30))
+            self.panel.rect(x, 0, btn_width - 2, btn_height, color565(180, 180, 180))
+            self.panel.text(FONT_Default, label, x + 6, 6, color565(255, 255, 255))
+
+    def poll_touch(self):
+        if not self.touch_controller:
+            return None
+        point = self.touch_controller.get_touch()
+        if not point:
+            self._active_button = None
+            return None
+        return self._handle_button_touch(*point)
+
+    def _handle_button_touch(self, x, y):
+        if y > BUTTON_HEIGHT:
+            self._active_button = None
+            return None
+        btn_width = (DisplayManager.WIDTH - BUTTON_MARGIN * 2) // len(BUTTON_LABELS)
+        x_rel = x - BUTTON_MARGIN
+        if x_rel < 0:
+            return None
+        idx = min(len(BUTTON_LABELS) - 1, x_rel // btn_width)
+        button = BUTTON_LABELS[idx]
+        if button == self._active_button:
+            return None
+        self._active_button = button
+        if button == "MODE":
+            return {"cmd": "event", "event": {"type": "mode_request", "source": "touch_button"}}
+        if button == "UP":
+            return {"cmd": "event", "event": {"type": "scroll", "dir": "up", "source": "touch_button"}}
+        return {"cmd": "event", "event": {"type": "scroll", "dir": "down", "source": "touch_button"}}
 
     # Background management ------------------------------------------------
     def _apply_background(self, background):

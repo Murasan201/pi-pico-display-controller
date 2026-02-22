@@ -75,6 +75,9 @@ class DisplayManager:
 - `collect_local_status()`
   - Pico 内部から取得可能なデータ（Wi-Fi 信号強度、内部温度センサなど）をまとめて `self.panel` に補足表示するための関数。
 
+- `poll_touch()`
+  - トップに描画されたタッチボタンを監視し、Pi へ `event` コマンドを返す。モード切替リクエスト(`mode_request`)とスクロール(`scroll`)を JSON 形式で送るよう設計されており、`main.py` の送信ループで呼び出しています。
+
 ## Pi 5 側（送信するデータ）
 - `status_datetime` モードのペイロード例：
   ```json

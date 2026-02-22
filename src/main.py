@@ -8,6 +8,16 @@ from config import TCP_SERVER_HOST, TCP_SERVER_PORT, BUFFER_SIZE, RECONNECT_DELA
 from secrets import WIFI_SSID, WIFI_PASSWORD
 
 
+def send_event(sock, event):
+    if not event:
+        return
+    try:
+        sock.send((json.dumps(event) + "
+").encode())
+    except OSError:
+        pass
+
+
 def connect_wifi():
     wlan = network.WLAN(network.STA_IF)
     if not wlan.active():
@@ -45,7 +55,11 @@ def run():
             sock.connect((TCP_SERVER_HOST, TCP_SERVER_PORT))
             buffer = b""
             while True:
-                chunk = sock.recv(BUFFER_SIZE)
+                try:
+                    chunk = sock.recv(BUFFER_SIZE)
+                except socket.timeout:
+                    send_event(sock, display.poll_touch())
+                    continue
                 if not chunk:
                     raise OSError("socket closed")
                 buffer += chunk.replace(b"\r", b"")
