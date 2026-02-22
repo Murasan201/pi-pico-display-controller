@@ -1,6 +1,7 @@
 """Command server for Raspberry Pi 5 to control Pico display modes."""
 import argparse
 import json
+import os
 import socket
 import threading
 import sys
@@ -11,10 +12,13 @@ class DisplayCommandServer:
     def __init__(self, bind="0.0.0.0", port=5000):
         self.bind = bind
         self.port = port
+        self.accept_timeout = 1.0
+        self.recv_timeout = 2.0
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server.bind((self.bind, self.port))
         self.server.listen(2)
+        self.server.settimeout(self.accept_timeout)
         self.clients = set()
         self.clients_lock = threading.Lock()
         self.running = threading.Event()
@@ -36,8 +40,11 @@ class DisplayCommandServer:
         while self.running.is_set():
             try:
                 conn, addr = self.server.accept()
+            except socket.timeout:
+                continue
             except OSError:
                 break
+            conn.settimeout(self.recv_timeout)
             print(f"Pico connected from {addr}")
             with self.clients_lock:
                 self.clients.add(conn)
@@ -47,7 +54,13 @@ class DisplayCommandServer:
         buffer = b""
         try:
             while self.running.is_set():
-                chunk = conn.recv(1024)
+                try:
+                    chunk = conn.recv(1024)
+                except socket.timeout:
+                    # Periodically wake up to observe server shutdowns.
+                    continue
+                except (ConnectionResetError, BrokenPipeError, OSError):
+                    break
                 if not chunk:
                     break
                 buffer += chunk.replace(b"\r", b"")
@@ -84,6 +97,53 @@ class DisplayCommandServer:
         return self.broadcast({"cmd": "refresh"})
 
 
+def _dispatch_line(server, line):
+    """Parse and dispatch a single command line to the server."""
+    if not line:
+        return
+    if line.startswith("mode "):
+        tokens = line.split(None, 2)
+        mode = tokens[1]
+        payload = {}
+        if len(tokens) == 3:
+            try:
+                payload = json.loads(tokens[2])
+            except ValueError:
+                print("Invalid JSON payload.")
+                return
+        server.send_mode(mode, payload)
+        return
+    if line.lower() == "refresh":
+        server.send_refresh()
+        return
+    try:
+        candidate = json.loads(line)
+    except ValueError:
+        print(f"Unrecognized command: {line}")
+        return
+    server.broadcast(candidate)
+
+
+def fifo_loop(server, fifo_path):
+    """Read commands from a named pipe (FIFO) in a loop."""
+    if not os.path.exists(fifo_path):
+        os.mkfifo(fifo_path)
+        print(f"Created FIFO: {fifo_path}")
+    print(f"Listening for commands on FIFO: {fifo_path}")
+    while server.running.is_set():
+        try:
+            with open(fifo_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        print(f"[fifo] {line}")
+                        _dispatch_line(server, line)
+        except OSError as exc:
+            if server.running.is_set():
+                print(f"FIFO read error: {exc}")
+                time.sleep(0.5)
+
+
 def interactive_loop(server):
     print("Enter `mode <mode> <payload-json>`, `refresh`, or raw JSON commands. Type 'exit' to stop.")
     while True:
@@ -96,27 +156,7 @@ def interactive_loop(server):
             continue
         if line.lower() in {"exit", "quit"}:
             break
-        if line.startswith("mode "):
-            tokens = line.split(None, 2)
-            mode = tokens[1]
-            payload = {}
-            if len(tokens) == 3:
-                try:
-                    payload = json.loads(tokens[2])
-                except ValueError:
-                    print("Invalid JSON payload.")
-                    continue
-            server.send_mode(mode, payload)
-            continue
-        if line.lower() == "refresh":
-            server.send_refresh()
-            continue
-        try:
-            candidate = json.loads(line)
-        except ValueError:
-            print("Unrecognized command. Use `mode`, `refresh`, or provide JSON.")
-            continue
-        server.broadcast(candidate)
+        _dispatch_line(server, line)
 
 
 def parse_args():
@@ -124,7 +164,8 @@ def parse_args():
     parser.add_argument("--bind", default="0.0.0.0", help="Host interface for the TCP server")
     parser.add_argument("--port", type=int, default=5000, help="TCP port the Pico clients connect to")
     parser.add_argument("--preload", help="Path to a JSON file with one command per line to send immediately after the first client connects")
-    parser.add_argument("--headless", action="store_true", help="Send preload commands (if provided) and exit without interactive prompt")
+    parser.add_argument("--headless", action="store_true", help="Run without interactive prompt (use with --fifo)")
+    parser.add_argument("--fifo", default=None, help="Path to a named pipe (FIFO) for receiving commands (default: none)")
     return parser.parse_args()
 
 
@@ -136,7 +177,14 @@ def main():
         if args.preload:
             wait_for_connection(server)
             send_preload(args.preload, server)
-        if not args.headless:
+        if args.fifo:
+            fifo_thread = threading.Thread(target=fifo_loop, args=(server, args.fifo), daemon=True)
+            fifo_thread.start()
+        if args.headless:
+            # Keep running until interrupted
+            while server.running.is_set():
+                time.sleep(1)
+        else:
             interactive_loop(server)
     finally:
         server.stop()

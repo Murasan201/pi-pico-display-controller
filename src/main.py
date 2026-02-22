@@ -12,8 +12,7 @@ def send_event(sock, event):
     if not event:
         return
     try:
-        sock.send((json.dumps(event) + "
-").encode())
+        sock.send((json.dumps(event) + "\n").encode())
     except OSError:
         pass
 
@@ -57,9 +56,11 @@ def run():
             while True:
                 try:
                     chunk = sock.recv(BUFFER_SIZE)
-                except socket.timeout:
-                    send_event(sock, display.poll_touch())
-                    continue
+                except OSError as e:
+                    if e.args[0] == 110:  # ETIMEDOUT
+                        send_event(sock, display.poll_touch())
+                        continue
+                    raise
                 if not chunk:
                     raise OSError("socket closed")
                 buffer += chunk.replace(b"\r", b"")

@@ -4,8 +4,8 @@ import utime
 import ubinascii
 import os
 
-from st7789 import ST7789, color565, FONT_Default
-from jpegdec import JPEG
+from st7789 import ST7789, color565
+import vga1_8x16 as font
 
 
 WEATHER_COLOR_MAP = {
@@ -30,6 +30,7 @@ BACKGROUND_FILENAME = "/background.jpg"
 BUTTON_LABELS = ("MODE", "UP", "DOWN")
 BUTTON_HEIGHT = 28
 BUTTON_MARGIN = 6
+CONTENT_TOP = BUTTON_HEIGHT + 4
 
 class DisplayManager:
     WIDTH = 240
@@ -37,7 +38,7 @@ class DisplayManager:
 
     def __init__(self):
         self.spi = SPI(
-            0,
+            1,
             baudrate=62_500_000,
             polarity=1,
             phase=1,
@@ -53,12 +54,10 @@ class DisplayManager:
             dc=Pin(8, Pin.OUT),
             cs=Pin(9, Pin.OUT),
             backlight=Pin(13, Pin.OUT),
-            rotation=1,
+            rotation=0,
         )
         self.panel.init()
         self.panel.fill(0)
-        self.panel.font = FONT_Default
-        self.jpeg = JPEG(self.panel)
         self.current_mode = None
         self.current_payload = {}
         self.handlers = {
@@ -98,26 +97,27 @@ class DisplayManager:
         self._draw_buttons()
         primary_color = data.get("primary_color", color565(255, 255, 255))
         secondary_color = data.get("secondary_color", color565(200, 200, 200))
-        self.panel.text(FONT_Default, data["date"], 12, 4, primary_color)
-        self.panel.text(FONT_Default, data["time"], 12, 28, primary_color)
-        self.panel.fill_rect(8, 60, DisplayManager.WIDTH - 16, 110, color565(0, 0, 0))
-        self.panel.text(FONT_Default, data["weather"], 12, 72, primary_color)
-        self.panel.text(FONT_Default, data["temp"], 12, 96, primary_color)
-        self.panel.text(FONT_Default, data["humidity"], 12, 120, secondary_color)
-        draw_weather_icon(self.panel, data["weather"], primary_color)
+        y = CONTENT_TOP
+        self.panel.text(font, data["date"], 12, y, primary_color)
+        self.panel.text(font, data["time"], 12, y + 24, primary_color)
+        self.panel.fill_rect(8, y + 56, DisplayManager.WIDTH - 16, 110, color565(0, 0, 0))
+        self.panel.text(font, data["weather"], 12, y + 68, primary_color)
+        self.panel.text(font, data["temp"], 12, y + 92, primary_color)
+        self.panel.text(font, data["humidity"], 12, y + 116, secondary_color)
+        draw_weather_icon(self.panel, data["weather"], primary_color, y + 66)
 
     def _draw_tasks(self, payload):
         tasks = normalize_tasks(payload)
         self.panel.fill(0)
         self._apply_background(payload.get("background"))
         self._draw_buttons()
-        self.panel.text(FONT_Default, "Short Tasks", 12, 2, color565(255, 255, 255))
-        y = 30
+        self.panel.text(font, "Short Tasks", 12, CONTENT_TOP, color565(255, 255, 255))
+        y = CONTENT_TOP + 24
         for item in tasks:
             status_color = item.get("color", color565(255, 255, 255))
             self.panel.fill_rect(6, y - 2, DisplayManager.WIDTH - 12, 20, color565(20, 20, 20))
-            self.panel.text(FONT_Default, item["title"], 12, y, status_color)
-            self.panel.text(FONT_Default, item["status"], 12, y + 16, color565(180, 180, 180))
+            self.panel.text(font, item["title"], 12, y, status_color)
+            self.panel.text(font, item["status"], 12, y + 16, color565(180, 180, 180))
             y += 36
             if y > DisplayManager.HEIGHT - 32:
                 break
@@ -130,9 +130,9 @@ class DisplayManager:
         self.panel.fill(0)
         self._apply_background(payload.get("background"))
         self._draw_buttons()
-        y = 10
+        y = CONTENT_TOP
         for line in lines:
-            self.panel.text(FONT_Default, line, 12, y, color565(255, 255, 255))
+            self.panel.text(font, line, 12, y, color565(255, 255, 255))
             y += 18
             if y > DisplayManager.HEIGHT - 10:
                 break
@@ -144,7 +144,7 @@ class DisplayManager:
             x = BUTTON_MARGIN + idx * btn_width
             self.panel.fill_rect(x, 0, btn_width - 2, btn_height, color565(30, 30, 30))
             self.panel.rect(x, 0, btn_width - 2, btn_height, color565(180, 180, 180))
-            self.panel.text(FONT_Default, label, x + 6, 6, color565(255, 255, 255))
+            self.panel.text(font, label, x + 6, 6, color565(255, 255, 255))
 
     def poll_touch(self):
         if not self.touch_controller:
@@ -185,8 +185,7 @@ class DisplayManager:
 
     def _render_jpeg(self, path):
         try:
-            self.jpeg.open_file(path)
-            self.jpeg.decode(0, 0, 1)
+            self.panel.jpg(path, 0, 0)
         except Exception:
             pass
 
@@ -243,7 +242,7 @@ def normalize_tasks(payload):
     return output
 
 
-def draw_weather_icon(panel, label, primary_color):
+def draw_weather_icon(panel, label, primary_color, y=70):
     icon = {
         "Sunny": "☀",
         "Cloudy": "☁",
@@ -251,7 +250,7 @@ def draw_weather_icon(panel, label, primary_color):
         "Storm": "⚡",
         "Snow": "❄",
     }.get(label, "?")
-    panel.text(FONT_Default, icon, DisplayManager.WIDTH - 40, 70, primary_color)
+    panel.text(font, icon, DisplayManager.WIDTH - 40, y, primary_color)
 
 
 def wrap_text_lines(text, width):
