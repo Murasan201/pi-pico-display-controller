@@ -1,53 +1,116 @@
-# Raspberry Pi 5 ホスト側: コマンド送信
+# Raspberry Pi 5 ホスト側: コマンドサーバ
 
-Raspberry Pi 5 は MicroPython を実行する Pico 2 W に表示指示を送る TCP サーバ兼 CLI として動作します。`host/command_server.py` を使うことで、Pico が接続している間、JSON コマンドを送って表示モードを切り替えたり、背景 JPEG を更新したり、手動でリフレッシュを要求できます。
+Raspberry Pi 5 は Pico 2 W に表示指示を送る TCP サーバとして動作する。`host/command_server.py` を使い、Pico が Wi-Fi 経由で接続している間、JSON コマンドで表示モード切替・背景更新・リフレッシュを行う。
 
-## サーバの起動
+## サーバ起動方法
+
+### ヘッドレスモード（推奨・本番運用）
+
 ```bash
-python3 host/command_server.py --bind 0.0.0.0 --port 5000
+python3 -u host/command_server.py --headless --fifo /tmp/pico-cmd-fifo
 ```
-- Pico の `src/main.py` が `TCP_SERVER_HOST`/`PORT` に合わせてこのポートに接続すると、受信したコマンドを処理します。
-- `src/config.py` の `TCP_SERVER_HOST` を実際の Raspberry Pi 5 の IP または mDNS 名（例：`raspberrypi.local`）に書き換えてからデバイスにデプロイしてください。IP は環境ごとに異なるため Git には含めず、各自で上書きする運用とします。- 接続中は Pico からのレスポンスが標準出力に出てくるので、正常性確認とログに使えます。
 
-## 代表的なコマンド
-- `mode status_datetime {"date":"2026/02/22","time":"00:15","weather":"Cloudy","temp":"12°C"}`
-  - 日時/天気表示モードを指定データで更新します。
-- `mode tasks_short {"tasks":[{"title":"資料作成","status":"in_progress"},{"title":"会議","status":"pending"}]}`
-  - 短期タスク表示を切り替えます。最大 4 件まで描画され、ステータスで色分けされます。
+- `--headless`: 対話プロンプトなしで待機。`input()` によるブロッキングが発生しない
+- `--fifo`: 名前付きパイプ（FIFO）からコマンドを受け付けるデーモンスレッドを起動
+- `-u`: Python の出力バッファリングを無効化（ログのリアルタイム確認用）
+
+### pico-ctl.sh（Claude Code / シェルからの操作）
+
+全操作がノンブロッキングで設計されており、Claude Code から安全に呼び出せる。
+
+```bash
+scripts/pico-ctl.sh start          # サーバ起動（冪等・既に起動中なら何もしない）
+scripts/pico-ctl.sh stop           # サーバ停止
+scripts/pico-ctl.sh restart        # サーバ再起動
+scripts/pico-ctl.sh status         # 状態確認（サーバ/FIFO/Pico接続/USB）
+scripts/pico-ctl.sh send '<json>'  # FIFO 経由でコマンド送信（3秒タイムアウト）
+scripts/pico-ctl.sh send-file <f>  # ファイルから複数コマンド送信
+scripts/pico-ctl.sh wait-pico [s]  # Pico 接続待ち（デフォルト30秒）
+scripts/pico-ctl.sh logs [n]       # ログ末尾表示（デフォルト30行）
+```
+
+### インタラクティブモード（開発・デバッグ用）
+
+```bash
+python3 host/command_server.py
+```
+
+`command>` プロンプトが表示され、直接コマンドを入力できる:
+- `mode status_datetime {"date":"2026/02/22","time":"14:30","weather":"Cloudy","temp":"12°C"}`
+- `mode tasks_short {"tasks":[{"title":"資料作成","status":"in_progress"}]}`
+- `mode free_text {"text":"Hello!"}`
 - `refresh`
-  - 現在のモードを再描画させ、背景やローカルデータを再読込させたいときに使います。
-- 生 JSON を直接貼り付けることもできます。例：
-  ```json
-  {"cmd":"set_mode","mode":"status_datetime","payload":{"weather":"Rain","temp":"9°C"}}
-  ```
+- 生 JSON: `{"cmd":"set_mode","mode":"status_datetime","payload":{...}}`
+- `exit` / `quit`
 
-## 画像やアセットの準備
-1. Pico 側の `assets/` に背景 JPEG やアイコンを配置する例：
-   ```bash
-   mpremote connect usb0 fs mkdir -p assets
-   mpremote connect usb0 fs cp assets/background.jpg :/assets/background.jpg
-   ```
-2. JSON で背景を指定するには `payload` に `background: {"path": "/assets/background.jpg"}` を含めます。
-3. 直接 Pi から JPEG を送る場合、Base64 エンコードして `background` に `data` キーをセットすれば `DisplayManager` が受信して描画します（転送前に `base64` コマンドでファイルを変換）。
+### プリロードモード
 
-## 非対話モード
-- `--preload commands.txt` を使うと、起動直後にファイル内の JSON（1 行 1 コマンド）を順番に送信できます。
-- `--headless` と組み合わせると、PIO が接続するとすぐファイルを送ったのちにプロセスを終了させられます。
-
-## ディレクトリ構成
-```
-host/
-└── command_server.py  # TCP コマンドサーバ
-```
-
-## 起動例
 ```bash
 python3 host/command_server.py --preload initial_commands.txt
 ```
-- `initial_commands.txt` には、起動時に表示しておきたいモード変更コマンドを記述しておくと自動化できます。
-- `initial_commands.txt` は JSON 一行ずつ（コメント行は `#` で始める）。
+
+最初のクライアント接続後（最大30秒待機）、ファイル内の JSON を1行ずつ送信。`#` 行はスキップ。`--headless` や `--fifo` と組み合わせ可能。
+
+## 設定
+
+Pico 側の接続先は `src/config.py` で定義する:
+
+```python
+TCP_SERVER_HOST = "192.168.11.16"  # Pi 5 のローカル IP
+TCP_SERVER_PORT = 5000
+```
+
+> IP アドレスは環境ごとに異なるため `src/config.py` は `.gitignore` で除外されていない（`src/secrets.py` は除外済み）。デプロイ先に合わせて書き換えること。
+
+## ファイル構成
+
+```
+host/
+└── command_server.py   # TCP コマンドサーバ（ヘッドレス/FIFO/対話モード対応）
+
+scripts/
+└── pico-ctl.sh         # ノンブロッキングラッパースクリプト
+
+/tmp/
+├── pico-cmd-fifo       # 名前付きパイプ（FIFO）
+├── pico-server.log     # サーバログ
+└── pico-server.pid     # PIDファイル
+```
+
+## FIFO 経由のコマンド送信
+
+FIFO への書き込みは必ず `timeout` でラップすること。読み取り側がいない場合、書き込みは永遠にブロックする。
+
+```bash
+# 正しい方法
+timeout 3 bash -c "printf '%s\n' '{\"cmd\":\"refresh\"}' > /tmp/pico-cmd-fifo"
+
+# pico-ctl.sh を使う方法（推奨）
+scripts/pico-ctl.sh send '{"cmd":"refresh"}'
+```
 
 ## ログの活用
-- Pico から返ってくる ACK やエラー（JSON 形式）も標準出力に表示されるので、追加のログファイルにリダイレクトするとトレーサビリティが確保できます。
 
-このホストスクリプトを `systemd` サービス化したり、`cron`/`tmux` で常時起動させておけば、Pi 5 から Pico への表示操作が安定して行えます。必要であれば `docs/system-spec.md` にサーバ起動方法やポート番号を補完してください。
+ヘッドレスモードでは全ログが `/tmp/pico-server.log` に出力される:
+
+```bash
+# 最新ログを確認
+scripts/pico-ctl.sh logs 30
+
+# Pico 接続・切断の確認
+grep -E "connected|disconnected" /tmp/pico-server.log
+
+# FIFO 経由のコマンド確認
+grep "\[fifo\]" /tmp/pico-server.log
+```
+
+## 画像アセット
+
+1. Pico の `assets/` に背景 JPEG を配置:
+   ```bash
+   mpremote connect /dev/ttyACM0 fs mkdir assets
+   mpremote connect /dev/ttyACM0 fs cp background.jpg :/assets/background.jpg
+   ```
+2. JSON ペイロードで背景を指定:
+   - ファイルパス: `"background": {"path": "/assets/bg.jpg"}`
+   - Base64 インライン: `"background": {"data": "<base64>"}`
