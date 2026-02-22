@@ -37,15 +37,22 @@ This note captures the recommended steps for first-time execution and for calibr
 4. Make sure `src/config_local.py` (or `config.py`) on the Pico contains the host IP before running.
 
 ## 3. Host Server Execution
-1. Start the TCP command server on Raspberry Pi 5:
+1. Start the TCP command server on Raspberry Pi 5 via helper script:
    ```bash
-   python3 host/command_server.py --bind 0.0.0.0 --port 5000
+   scripts/pico-ctl.sh start
+   scripts/pico-ctl.sh status
    ```
-2. Use the interactive prompt (`mode`, `refresh`, raw JSON) to send mode commands. Example:
+2. Send mode commands through the script (direct write to `/tmp/pico-cmd-fifo` is prohibited). Example:
    ```bash
-   mode status_datetime {"date":"2026/02/22","time":"00:45","weather":"Sunny","temp":"15°C"}
+   scripts/pico-ctl.sh send '{"cmd":"set_mode","mode":"status_datetime","payload":{"date":"2026/02/22","time":"00:45","weather":"Sunny","temp":"15C"}}'
    ```
-3. Background JPEGs can be referenced after syncing them to `/assets/` on the Pico or encoded as Base64 in the payload.
+3. If the payload contains special characters (`!`, quotes), use HEREDOC-safe stdin mode:
+   ```bash
+   scripts/pico-ctl.sh send-stdin <<'EOF'
+   {"cmd":"set_mode","mode":"free_text","payload":{"text":"Display test!"}}
+   EOF
+   ```
+4. Background JPEGs can be referenced after syncing them to `/assets/` on the Pico or encoded as Base64 in the payload.
 
 ## 4. Touch Driver Calibration
 The touchscreen uses the XPT2046 controller. Calibration ensures the drawn touch buttons (mode/up/down) respond accurately.

@@ -10,3 +10,10 @@
 
 ## その他のルール
 - ここに記載したハードウェア構成とドキュメントの配置を守り、プロジェクトの整合性を保ってください。
+
+## Picoコマンド送信ルール（フリーズ再発防止）
+- Picoへのコマンド送信は、必ずこのリポジトリ内の `scripts/pico-ctl.sh` を使用してください。
+- `/tmp/pico-cmd-fifo` への直接書き込み（`echo` / `printf` / リダイレクト）は禁止です。
+- 1行JSON送信は `scripts/pico-ctl.sh send '<json>'` を使用してください。
+- `!` や引用符を含む複雑なJSONは `scripts/pico-ctl.sh send-stdin` + HEREDOC で送信してください。
+- 既存手順やドキュメント内に直接FIFO書き込みがあれば、順次 `scripts/pico-ctl.sh` 利用へ統一してください。

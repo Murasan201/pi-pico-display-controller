@@ -27,12 +27,23 @@ This repository hosts the software and documentation for a Raspberry Pi 5 + Rasp
    - Install `mpremote`, `picotool`, and `mpy-cross` on the Pi host. Use `picotool load build/main.uf2` for BOOTSEL-write and `mpremote` to sync files while MicroPython is running.
    - Automate using a script such as `scripts/deploy.sh` that copies files, uploads assets, and restarts the Pico.
 3. **Run the host server**
-   - Launch `python3 host/command_server.py` on Raspberry Pi 5. The Pico connects to the configured host IP/port over Wi-Fi and awaits commands.
-   - Use CLI commands to switch modes and send backgrounds:
+   - Prefer `scripts/pico-ctl.sh` for all host operations (start/stop/status/send). This avoids FIFO blocking and shell escaping issues.
+   - Launch/start the server via script:
      ```bash
-     mode status_datetime {"date":"2026/02/22","time":"00:15","weather":"Cloudy","temp":"12°C"}
-     mode tasks_short {"tasks":[{"title":"Docs","status":"in_progress"}]}
-     refresh
+     scripts/pico-ctl.sh start
+     scripts/pico-ctl.sh status
+     ```
+   - Send commands via script (do not write directly to `/tmp/pico-cmd-fifo`):
+     ```bash
+     scripts/pico-ctl.sh send '{"cmd":"set_mode","mode":"status_datetime","payload":{"date":"2026/02/22","time":"00:15","weather":"Cloudy","temp":"12C"}}'
+     scripts/pico-ctl.sh send '{"cmd":"set_mode","mode":"tasks_short","payload":{"tasks":[{"title":"Docs","status":"in_progress"}]}}'
+     scripts/pico-ctl.sh send '{"cmd":"refresh"}'
+     ```
+   - If payload includes special characters like `!`, use HEREDOC-safe stdin mode:
+     ```bash
+     scripts/pico-ctl.sh send-stdin <<'EOF'
+     {"cmd":"set_mode","mode":"free_text","payload":{"text":"Display test!"}}
+     EOF
      ```
    - Background JPEGs can be referenced via `background:{"path":"/assets/bg.jpg"}` (after syncing to the Pico) or sent as Base64 data for on-the-fly images.
 

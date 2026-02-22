@@ -44,4 +44,4 @@ class TouchController:
             return None
         x = (x_raw * self.width) // 4096
         y = (y_raw * self.height) // 4096
-        return x, self.height - y
+        return self.width - x, y

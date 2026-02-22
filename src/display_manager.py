@@ -54,7 +54,7 @@ class DisplayManager:
             dc=Pin(8, Pin.OUT),
             cs=Pin(9, Pin.OUT),
             backlight=Pin(13, Pin.OUT),
-            rotation=0,
+            rotation=2,
         )
         self.panel.init()
         self.panel.fill(0)
