@@ -6,15 +6,24 @@ import os
 
 from st7789 import ST7789, color565
 import vga1_8x16 as font
+from text_renderer import draw_text, wrap_text_jp, truncate_to_width
 
 
 WEATHER_COLOR_MAP = {
     "Sunny": (255, 205, 60),
     "Clear": (255, 205, 60),
+    "晴れ": (255, 205, 60),
+    "晴": (255, 205, 60),
     "Cloudy": (180, 180, 180),
+    "曇り": (180, 180, 180),
+    "曇": (180, 180, 180),
     "Rain": (64, 150, 235),
+    "雨": (64, 150, 235),
     "Snow": (200, 230, 255),
+    "雪": (200, 230, 255),
     "Storm": (220, 80, 120),
+    "雷": (220, 80, 120),
+    "雷雨": (220, 80, 120),
 }
 
 STATUS_DEFAULTS = {
@@ -98,12 +107,12 @@ class DisplayManager:
         primary_color = data.get("primary_color", color565(255, 255, 255))
         secondary_color = data.get("secondary_color", color565(200, 200, 200))
         y = CONTENT_TOP
-        self.panel.text(font, data["date"], 12, y, primary_color)
-        self.panel.text(font, data["time"], 12, y + 24, primary_color)
+        draw_text(self.panel, data["date"], 12, y, primary_color)
+        draw_text(self.panel, data["time"], 12, y + 24, primary_color)
         self.panel.fill_rect(8, y + 56, DisplayManager.WIDTH - 16, 110, color565(0, 0, 0))
-        self.panel.text(font, data["weather"], 12, y + 68, primary_color)
-        self.panel.text(font, data["temp"], 12, y + 92, primary_color)
-        self.panel.text(font, data["humidity"], 12, y + 116, secondary_color)
+        draw_text(self.panel, data["weather"], 12, y + 68, primary_color)
+        draw_text(self.panel, data["temp"], 12, y + 92, primary_color)
+        draw_text(self.panel, data["humidity"], 12, y + 116, secondary_color)
         draw_weather_icon(self.panel, data["weather"], primary_color, y + 66)
 
     def _draw_tasks(self, payload):
@@ -116,8 +125,8 @@ class DisplayManager:
         for item in tasks:
             status_color = item.get("color", color565(255, 255, 255))
             self.panel.fill_rect(6, y - 2, DisplayManager.WIDTH - 12, 20, color565(20, 20, 20))
-            self.panel.text(font, item["title"], 12, y, status_color)
-            self.panel.text(font, item["status"], 12, y + 16, color565(180, 180, 180))
+            draw_text(self.panel, item["title"], 12, y, status_color)
+            draw_text(self.panel, item["status"], 12, y + 16, color565(180, 180, 180))
             y += 36
             if y > DisplayManager.HEIGHT - 32:
                 break
@@ -126,13 +135,13 @@ class DisplayManager:
         text = payload.get("text") or payload.get("message") or ""
         if isinstance(text, (list, tuple)):
             text = "\n".join(text)
-        lines = wrap_text_lines(text or "", 22)
+        lines = wrap_text_jp(text or "", 216)
         self.panel.fill(0)
         self._apply_background(payload.get("background"))
         self._draw_buttons()
         y = CONTENT_TOP
         for line in lines:
-            self.panel.text(font, line, 12, y, color565(255, 255, 255))
+            draw_text(self.panel, line, 12, y, color565(255, 255, 255))
             y += 18
             if y > DisplayManager.HEIGHT - 10:
                 break
@@ -229,7 +238,7 @@ def normalize_tasks(payload):
         raw = []
     output = []
     for item in raw[:4]:
-        title = item.get("title", "Untitled")[0:20]
+        title = truncate_to_width(item.get("title", "Untitled"), 216)
         status_text = item.get("status", "pending")
         color = {
             "done": color565(80, 200, 80),
@@ -243,29 +252,43 @@ def normalize_tasks(payload):
 
 
 def draw_weather_icon(panel, label, primary_color, y=70):
-    icon = {
-        "Sunny": "☀",
-        "Cloudy": "☁",
-        "Rain": "☂",
-        "Storm": "⚡",
-        "Snow": "❄",
-    }.get(label, "?")
-    panel.text(font, icon, DisplayManager.WIDTH - 40, y, primary_color)
+    x = DisplayManager.WIDTH - 44
+    if label in ("Sunny", "Clear", "晴れ", "晴"):
+        # Sun: filled circle with rays
+        panel.fill_rect(x + 8, y + 8, 16, 16, primary_color)
+        for dy in (0, 28):
+            panel.fill_rect(x + 12, y + dy, 8, 4, primary_color)
+        for dx in (0, 28):
+            panel.fill_rect(x + dx, y + 12, 4, 8, primary_color)
+    elif label in ("Cloudy", "曇り", "曇"):
+        # Cloud: two overlapping rectangles
+        panel.fill_rect(x + 4, y + 12, 24, 12, primary_color)
+        panel.fill_rect(x + 8, y + 6, 16, 8, primary_color)
+    elif label in ("Rain", "雨"):
+        # Cloud + rain drops
+        c = color565(100, 100, 100)
+        panel.fill_rect(x + 4, y + 4, 24, 10, c)
+        panel.fill_rect(x + 8, y + 0, 16, 6, c)
+        for dx in (6, 14, 22):
+            panel.fill_rect(x + dx, y + 18, 2, 6, primary_color)
+            panel.fill_rect(x + dx, y + 26, 2, 4, primary_color)
+    elif label in ("Storm", "雷", "雷雨"):
+        # Cloud + lightning bolt
+        c = color565(100, 100, 100)
+        panel.fill_rect(x + 4, y + 4, 24, 10, c)
+        panel.fill_rect(x + 8, y + 0, 16, 6, c)
+        panel.fill_rect(x + 14, y + 14, 6, 4, primary_color)
+        panel.fill_rect(x + 12, y + 18, 6, 4, primary_color)
+        panel.fill_rect(x + 10, y + 22, 6, 4, primary_color)
+    elif label in ("Snow", "雪"):
+        # Snowflake: cross pattern
+        panel.fill_rect(x + 14, y + 2, 4, 28, primary_color)
+        panel.fill_rect(x + 2, y + 14, 28, 4, primary_color)
+        panel.fill_rect(x + 6, y + 6, 4, 4, primary_color)
+        panel.fill_rect(x + 22, y + 6, 4, 4, primary_color)
+        panel.fill_rect(x + 6, y + 22, 4, 4, primary_color)
+        panel.fill_rect(x + 22, y + 22, 4, 4, primary_color)
+    else:
+        panel.text(font, "?", x + 8, y + 8, primary_color)
 
 
-def wrap_text_lines(text, width):
-    if not text:
-        return []
-    result = []
-    words = text.split()
-    line = ""
-    for word in words:
-        if len(line) + len(word) + (1 if line else 0) > width:
-            if line:
-                result.append(line)
-            line = word
-        else:
-            line = f"{line} {word}".strip()
-    if line:
-        result.append(line)
-    return result
