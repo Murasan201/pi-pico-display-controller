@@ -12,6 +12,7 @@ Raspberry Pi 5 からの指示で Raspberry Pi Pico 2 W 側の表示内容を切
 | `sensor` | 外部センサ／Pi から送られてくる値（数値・バー）を視覚化。 | `{ "value": 72, "unit": "%", "trend": "up" }` | レーダー・ゲージなどを組み合わせて描画。タッチで即時データ再取得をリクエスト可。 |
 | `message` | 任意テキスト＋アイコンを表示。通知用途。 | `{ "title": "Alert", "body": "Dock undocked", "icon": "⚠️" }` | 文字サイズ・カラーを動的に指定できるように。 |
 | `custom` | 表示レイヤーを合成する API。Pi が直接 `layers` 配列で色・位置を指定。 | `layers: [{ "type": "rect", "color": "#f0f0f0" }, ...]` | Pi 側で柔軟にレイアウトを構築したい場面用。 |
+| `free_text` | Pi からそのまま送られた文章をスクロールなしで描画。 | `{ "text": "Hello from Pi" }` | 単純なテキスト通知・メモ表示に向いています。 |
 
 ## モード切替のフロー
 1. Pi 5 が TCP ソケット経由で以下の JSON を送信：

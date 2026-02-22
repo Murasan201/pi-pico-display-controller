@@ -48,6 +48,10 @@ class DisplayManager:
   - ステータス（`pending`/`in_progress`/`done`）に応じてカラーを返す。
   - 最大 4 件にトリムし、無ければ `空白行` を挿入する。
 
+- `wrap_text_lines(text, width)`
+  - おおよそ 22 文字/行の制限で読みやすく折り返すが、単語単位で分割して自然な改行を重視。
+  - `free_text` モードで受信する文章を `list[str]` に変換する呼び出し元で使い、行数が画面に収まるように制御する。
+
 - `draw_weather_block(panel, data)` / `draw_task_list(panel, tasks)`
   - ST7789 用に座標とサイズを固定し、アイコンビットマップ・バー・テキストを描画する共通関数。
 

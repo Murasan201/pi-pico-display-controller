@@ -32,6 +32,16 @@ Each command is a JSON object with the following fields:
     }
   }
   ```
+  For the new `free_text` mode send plain text:
+  ```json
+  {
+    "cmd": "set_mode",
+    "mode": "free_text",
+    "payload": {
+      "text": "Pi says hello!"
+    }
+  }
+  ```
 - `refresh`: requests the Pico to redraw the current mode using cached payload.
   ```json
   {"cmd": "refresh"}

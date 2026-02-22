@@ -60,6 +60,7 @@ class DisplayManager:
         self.handlers = {
             "status_datetime": self._draw_status,
             "tasks_short": self._draw_tasks,
+            "free_text": self._draw_free_text,
         }
 
     def set_mode(self, mode, payload):
@@ -103,6 +104,20 @@ class DisplayManager:
             self.panel.text(FONT_Default, item["status"], 12, y + 16, color565(180, 180, 180))
             y += 36
             if y > DisplayManager.HEIGHT - 32:
+                break
+
+    def _draw_free_text(self, payload):
+        text = payload.get("text") or payload.get("message") or ""
+        if isinstance(text, (list, tuple)):
+            text = "\n".join(text)
+        lines = wrap_text_lines(text or "", 22)
+        self.panel.fill(0)
+        self._apply_background(payload.get("background"))
+        y = 10
+        for line in lines:
+            self.panel.text(FONT_Default, line, 12, y, color565(255, 255, 255))
+            y += 18
+            if y > DisplayManager.HEIGHT - 10:
                 break
 
     # Background management ------------------------------------------------
@@ -183,3 +198,21 @@ def draw_weather_icon(panel, label, primary_color):
         "Snow": "❄",
     }.get(label, "?")
     panel.text(FONT_Default, icon, DisplayManager.WIDTH - 40, 70, primary_color)
+
+
+def wrap_text_lines(text, width):
+    if not text:
+        return []
+    result = []
+    words = text.split()
+    line = ""
+    for word in words:
+        if len(line) + len(word) + (1 if line else 0) > width:
+            if line:
+                result.append(line)
+            line = word
+        else:
+            line = f"{line} {word}".strip()
+    if line:
+        result.append(line)
+    return result
