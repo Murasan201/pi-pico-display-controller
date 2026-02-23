@@ -10,6 +10,7 @@ Also provides pixel-width-based text wrapping for Japanese text.
 
 import vga1_8x16 as font_ascii
 import font_jp16
+import font_jp16_extra
 
 # Character widths by rendering path
 _ASCII_CHAR_W = 8   # vga1_8x16 fixed width
@@ -56,7 +57,10 @@ def draw_text(panel, text, x, y, fg_color, bg_color=0):
             panel.text(font_ascii, ch, x, y, fg_color)
             x += _ASCII_CHAR_W
         else:
-            panel.write(font_jp16, ch, x, y, fg_color, bg_color)
+            glyph_font = font_jp16
+            if ch not in font_jp16.MAP and ch in font_jp16_extra.MAP:
+                glyph_font = font_jp16_extra
+            panel.write(glyph_font, ch, x, y, fg_color, bg_color)
             x += _JP_CHAR_W
 
 
