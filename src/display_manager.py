@@ -3,6 +3,7 @@ from touch_controller import TouchController
 import utime
 import ubinascii
 import os
+import random
 
 from st7789 import ST7789, color565
 import vga1_8x16 as font
@@ -49,7 +50,7 @@ class DisplayManager:
     def __init__(self):
         self.spi = SPI(
             1,
-            baudrate=62_500_000,
+            baudrate=20_000_000,
             polarity=1,
             phase=1,
             sck=Pin(10),
@@ -85,32 +86,50 @@ class DisplayManager:
             height=DisplayManager.HEIGHT,
         )
         self._active_button = None
+        self.backgrounds = []
+
+    def set_backgrounds(self, bg_list):
+        self.backgrounds = bg_list
 
     def set_mode(self, mode, payload):
         handler = self.handlers.get(mode)
         if not handler:
             return {"status": "error", "reason": "unknown_mode"}
+        mode_changed = self.current_mode != mode
         if mode == "status_datetime" and self.current_mode == "status_datetime":
             self.current_payload.update(payload or {})
-        else:
-            self.current_payload = payload or {}
+            self.current_mode = mode
+            self._redraw_status_content()
+            return {"status": "ok", "mode": mode}
+        self.current_payload = payload or {}
+        if mode_changed and self.backgrounds:
+            self.current_payload["background"] = {"path": random.choice(self.backgrounds)}
         self.current_mode = mode
         handler(self.current_payload)
         return {"status": "ok", "mode": mode}
 
     def refresh(self):
-        if self.current_mode and self.current_mode in self.handlers:
+        if self.current_mode == "status_datetime":
+            self._refresh_status_time()
+        elif self.current_mode and self.current_mode in self.handlers:
             self.handlers[self.current_mode](self.current_payload)
 
     # Mode handlers ---------------------------------------------------------
     def _draw_status(self, payload):
         data = prepare_status_data(payload)
-        self.panel.fill(0)
-        self._apply_background(data.get("background"))
+        bg = data.get("background")
+        if bg:
+            self._apply_background(bg)
+        else:
+            self.panel.fill(0)
         self._draw_buttons()
+        self._draw_status_texts(data)
+
+    def _draw_status_texts(self, data):
         primary_color = data.get("primary_color", color565(255, 255, 255))
         secondary_color = data.get("secondary_color", color565(200, 200, 200))
         y = CONTENT_TOP
+        self.panel.fill_rect(12, y, 200, 48, color565(0, 0, 0))
         draw_text(self.panel, data["date"], 12, y, primary_color)
         draw_text(self.panel, data["time"], 12, y + 24, primary_color)
         self.panel.fill_rect(8, y + 56, DisplayManager.WIDTH - 16, 110, color565(0, 0, 0))
@@ -119,10 +138,25 @@ class DisplayManager:
         draw_text(self.panel, data["humidity"], 12, y + 116, secondary_color)
         draw_weather_icon(self.panel, data["weather"], primary_color, y + 66)
 
+    def _redraw_status_content(self):
+        data = prepare_status_data(self.current_payload)
+        self._draw_status_texts(data)
+
+    def _refresh_status_time(self):
+        data = prepare_status_data(self.current_payload)
+        primary_color = data.get("primary_color", color565(255, 255, 255))
+        y = CONTENT_TOP
+        self.panel.fill_rect(12, y, 200, 48, color565(0, 0, 0))
+        draw_text(self.panel, data["date"], 12, y, primary_color)
+        draw_text(self.panel, data["time"], 12, y + 24, primary_color)
+
     def _draw_tasks(self, payload):
         tasks = normalize_tasks(payload)
-        self.panel.fill(0)
-        self._apply_background(payload.get("background"))
+        bg = payload.get("background")
+        if bg:
+            self._apply_background(bg)
+        else:
+            self.panel.fill(0)
         self._draw_buttons()
         self.panel.text(font, "Short Tasks", 12, CONTENT_TOP, color565(255, 255, 255))
         y = CONTENT_TOP + 24
@@ -140,8 +174,11 @@ class DisplayManager:
         if isinstance(text, (list, tuple)):
             text = "\n".join(text)
         lines = wrap_text_jp(text or "", 216)
-        self.panel.fill(0)
-        self._apply_background(payload.get("background"))
+        bg = payload.get("background")
+        if bg:
+            self._apply_background(bg)
+        else:
+            self.panel.fill(0)
         self._draw_buttons()
         y = CONTENT_TOP
         for line in lines:

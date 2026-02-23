@@ -1,14 +1,45 @@
 import time
 import socket
 import json
+import os
 import network
+from machine import Pin, SPI
 
 from display_manager import DisplayManager
 from config import (
     TCP_SERVER_HOST, TCP_SERVER_PORT, BUFFER_SIZE, RECONNECT_DELAY,
     SOCKET_TIMEOUT, AUTO_REFRESH_INTERVAL, NTP_SYNC_INTERVAL,
+    SD_CS, SD_MOUNT_POINT,
 )
 from secrets import WIFI_SSID, WIFI_PASSWORD
+
+
+def mount_sd():
+    try:
+        import sdcard
+        Pin(9, Pin.OUT, value=1)   # LCD CS HIGH
+        Pin(16, Pin.OUT, value=1)  # TP CS HIGH
+        spi = SPI(1, baudrate=400_000, polarity=0, phase=0,
+                  sck=Pin(10), mosi=Pin(11), miso=Pin(12))
+        sd = sdcard.SDCard(spi, Pin(SD_CS, Pin.OUT, value=1))
+        # Warmup read to wake card data transfer engine
+        spi.init(baudrate=1_000_000)
+        try:
+            sd.readblocks(0, bytearray(512))
+        except OSError:
+            pass
+        spi.init(baudrate=20_000_000)
+        os.mount(os.VfsFat(sd), SD_MOUNT_POINT)
+        print("SD mount OK")
+        files = [SD_MOUNT_POINT + "/" + f
+                 for f in os.listdir(SD_MOUNT_POINT)
+                 if f.startswith("background_") and f.endswith(".jpg")]
+        files.sort()
+        print("SD backgrounds:", len(files))
+        return files
+    except Exception as e:
+        print("SD mount failed:", e)
+        return []
 
 
 def sync_ntp():
@@ -58,7 +89,9 @@ def handle_command(payload, display):
 
 
 def run():
+    bg_list = mount_sd()
     display = DisplayManager()
+    display.set_backgrounds(bg_list)
     wlan = connect_wifi()
     ntp_ok = sync_ntp()
     last_ntp_sync = time.time() if ntp_ok else 0
