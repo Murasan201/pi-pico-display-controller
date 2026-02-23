@@ -94,6 +94,23 @@ Raspberry Pi 5（ホスト）および Raspberry Pi Pico 2 W を中心に、WAVE
 4. **デプロイスクリプト例**
    - `scripts/deploy.sh` などを作って `git pull` → `./scripts/deploy.sh` で書き込み・再起動まで自動化するとミスが減る。
 
+## 時刻同期と自律更新
+
+### NTP 同期
+- Pico 2 W は Wi-Fi 接続済みのため、MicroPython 標準ライブラリ `ntptime` で NTP 時刻同期を行う。
+- 同期タイミング: Wi-Fi 接続確立直後（起動時）+ 24 時間ごとに再同期。
+- 起動時の NTP 同期は最大 3 回リトライする（各試行間 2 秒待機）。Wi-Fi 接続直後は DNS が未準備の場合があり、1 回目で失敗しても 2〜3 回目で成功することが確認されている。
+- 起動時に全リトライ失敗した場合、`last_ntp_sync = 0` とし、メインループの次の反復（`NTP_SYNC_INTERVAL` 経過判定が即座に真になる）で再試行する。
+- JST (UTC+9) オフセットを適用し、`utime.localtime(utime.time() + JST_OFFSET)` でローカル時刻を取得する。
+- NTP 同期失敗時はログ出力のみで動作を継続する（時刻は不正確になるが描画は止めない）。
+
+### status_datetime モードの自律更新
+- `status_datetime` モード時、Pico 側で 60 秒間隔の自動リフレッシュを行い、画面の日時表示を更新する。
+- 日時（date / time）は常に Pico のローカル時刻（`utime.localtime()`）から生成する。ホストからのペイロードに含まれる date / time は無視する。
+- 天気・温度・湿度はホストからの `set_mode` コマンドで更新し、Pico 側で `current_payload` にキャッシュする。
+- `set_mode` で `status_datetime` モードが再送された場合、新しいペイロードは既存の `current_payload` にマージされる。これにより天気だけ更新しても他のデータが保持される。
+- 他のモード（`tasks_short`, `free_text`）では自動リフレッシュは行わない。
+
 ## その他
 - **電源**：USB 給電のみで十分。Pico 自身が 5V レギュレータ（RT9193-33）を搭載しているので、Pi 側の USB 1 ポートから供給可能。追加の AC アダプタ不要。
 - **拡張**：将来的にタッチイベントやセンサ値を Pi へ送る際は、ソケットメッセージに `event` フィールドを追加し、Pi 側でハンドリングします。

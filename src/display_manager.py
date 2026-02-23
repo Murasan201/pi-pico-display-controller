@@ -7,6 +7,7 @@ import os
 from st7789 import ST7789, color565
 import vga1_8x16 as font
 from text_renderer import draw_text, wrap_text_jp, truncate_to_width
+from config import JST_OFFSET
 
 
 WEATHER_COLOR_MAP = {
@@ -89,9 +90,12 @@ class DisplayManager:
         handler = self.handlers.get(mode)
         if not handler:
             return {"status": "error", "reason": "unknown_mode"}
+        if mode == "status_datetime" and self.current_mode == "status_datetime":
+            self.current_payload.update(payload or {})
+        else:
+            self.current_payload = payload or {}
         self.current_mode = mode
-        self.current_payload = payload or {}
-        handler(payload or {})
+        handler(self.current_payload)
         return {"status": "ok", "mode": mode}
 
     def refresh(self):
@@ -212,9 +216,9 @@ class DisplayManager:
 # Helpers -----------------------------------------------------------------
 
 def prepare_status_data(payload):
-    now = utime.localtime()
-    date = payload.get("date") or "{:04d}/{:02d}/{:02d}".format(now[0], now[1], now[2])
-    time_text = payload.get("time") or "{:02d}:{:02d}".format(now[3], now[4])
+    now = utime.localtime(utime.time() + JST_OFFSET)
+    date = "{:04d}/{:02d}/{:02d}".format(now[0], now[1], now[2])
+    time_text = "{:02d}:{:02d}".format(now[3], now[4])
     weather = payload.get("weather") or STATUS_DEFAULTS["weather"]
     temp = payload.get("temp") or STATUS_DEFAULTS["temp"]
     humidity = payload.get("humidity") or STATUS_DEFAULTS["humidity"]

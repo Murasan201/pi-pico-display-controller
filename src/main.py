@@ -4,8 +4,24 @@ import json
 import network
 
 from display_manager import DisplayManager
-from config import TCP_SERVER_HOST, TCP_SERVER_PORT, BUFFER_SIZE, RECONNECT_DELAY, SOCKET_TIMEOUT
+from config import (
+    TCP_SERVER_HOST, TCP_SERVER_PORT, BUFFER_SIZE, RECONNECT_DELAY,
+    SOCKET_TIMEOUT, AUTO_REFRESH_INTERVAL, NTP_SYNC_INTERVAL,
+)
 from secrets import WIFI_SSID, WIFI_PASSWORD
+
+
+def sync_ntp():
+    import ntptime
+    for attempt in range(3):
+        try:
+            ntptime.settime()
+            print("NTP sync OK")
+            return True
+        except Exception as e:
+            print("NTP sync attempt", attempt + 1, "failed:", e)
+            time.sleep(2)
+    return False
 
 
 def send_event(sock, event):
@@ -44,9 +60,17 @@ def handle_command(payload, display):
 def run():
     display = DisplayManager()
     wlan = connect_wifi()
+    ntp_ok = sync_ntp()
+    last_ntp_sync = time.time() if ntp_ok else 0
+    last_refresh = time.time()
     while True:
         if not wlan.isconnected():
             wlan = connect_wifi()
+        # Periodic NTP re-sync
+        now = time.time()
+        if now - last_ntp_sync >= NTP_SYNC_INTERVAL:
+            if sync_ntp():
+                last_ntp_sync = time.time()
         sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -59,6 +83,16 @@ def run():
                 except OSError as e:
                     if e.args[0] == 110:  # ETIMEDOUT
                         send_event(sock, display.poll_touch())
+                        # Auto-refresh for status_datetime mode
+                        now = time.time()
+                        if (display.current_mode == "status_datetime"
+                                and now - last_refresh >= AUTO_REFRESH_INTERVAL):
+                            display.refresh()
+                            last_refresh = now
+                        # Periodic NTP re-sync
+                        if now - last_ntp_sync >= NTP_SYNC_INTERVAL:
+                            if sync_ntp():
+                                last_ntp_sync = time.time()
                         continue
                     raise
                 if not chunk:
@@ -74,6 +108,8 @@ def run():
                     except Exception:
                         continue
                     response = handle_command(payload, display)
+                    if response.get("status") == "ok":
+                        last_refresh = time.time()
                     try:
                         sock.send((json.dumps(response) + "\n").encode())
                     except OSError:
