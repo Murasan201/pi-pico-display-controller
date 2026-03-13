@@ -16,6 +16,23 @@ python3 -u host/command_server.py --headless --fifo /tmp/pico-cmd-fifo
 
 ### pico-ctl.sh（Claude Code / シェルからの操作）
 
+### systemd 自動復旧（Pi 再起動時）
+
+Pi 再起動後もコマンドサーバを自動復旧させるには、systemd サービスをインストールする。
+
+```bash
+cd /home/pi/.openclaw/workspace/project/pi-pico-display-controller
+scripts/install-systemd-service.sh
+```
+
+確認コマンド:
+
+```bash
+systemctl status pico-command-server.service --no-pager
+journalctl -u pico-command-server.service -n 50 --no-pager
+scripts/pico-ctl.sh status
+```
+
 全操作がノンブロッキングで設計されており、Claude Code から安全に呼び出せる。
 
 ```bash
@@ -56,11 +73,12 @@ python3 host/command_server.py --preload initial_commands.txt
 Pico 側の接続先は `src/config.py` で定義する:
 
 ```python
-TCP_SERVER_HOST = "192.168.11.16"  # Pi 5 のローカル IP
+TCP_SERVER_HOST = "192.168.11.22"  # Pi 5 の固定IP（例）
 TCP_SERVER_PORT = 5000
 ```
 
-> IP アドレスは環境ごとに異なるため `src/config.py` は `.gitignore` で除外されていない（`src/secrets.py` は除外済み）。デプロイ先に合わせて書き換えること。
+> Pi 側は DHCP 予約などで **固定 IP** にしておくことを推奨。固定化したら Pico 側 `config.py` も同じ値にそろえる。
+> IP アドレスは環境ごとに異なるため、デプロイ先に合わせて必ず書き換えること（`src/secrets.py` は Git 除外済み）。
 
 ## ファイル構成
 
@@ -103,6 +121,31 @@ grep -E "connected|disconnected" /tmp/pico-server.log
 # FIFO 経由のコマンド確認
 grep "\[fifo\]" /tmp/pico-server.log
 ```
+
+## トラブルシューティング
+
+### Pico が接続されない / 画面表示が止まる
+
+1. サーバ状態確認
+   ```bash
+   scripts/pico-ctl.sh status
+   scripts/pico-ctl.sh logs 50
+   ```
+2. Pico 側 `config.py` の `TCP_SERVER_HOST` が Pi 固定IPと一致するか確認
+   ```bash
+   mpremote connect /dev/ttyACM1 fs cat config.py
+   ```
+3. Pico 画面に `Pico connection error` が表示されている場合
+   - `host: <IP>:5000`
+   - `reason: ...`
+   - `retry: N`
+   が出るため、IP不一致・Wi-Fi未接続を切り分け可能。
+4. USBで一時接続して設定更新後に再起動
+
+### BOOTSEL / FS mode になっている場合
+
+`dmesg` に `Product: Board in FS mode` が出る場合、通常実行ではない。
+BOOTSEL を離してリセットするか、USB 抜き差し後に通常起動へ戻す。
 
 ## 画像アセット
 

@@ -9,7 +9,7 @@ This repository hosts the software and documentation for a Raspberry Pi 5 + Rasp
 
 ## Software Architecture
 - **MicroPython code (`src/`)**:
-  - `main.py`: Wi-Fi client, TCP socket glue, and command dispatcher (`set_mode`, `refresh`).
+  - `main.py`: Wi-Fi client, TCP socket glue, and command dispatcher (`set_mode`, `refresh`)。接続失敗時はディスプレイに `Pico connection error` を表示して原因（host/reason/retry）を可視化。
   - `display_manager.py`: Initializes ST7789, draws `status_datetime` and `tasks_short` modes, handles JPEG backgrounds (local or Base64 data), and wraps helper functions for formatting payloads.
   - `config.py`: Contains `TCP_SERVER_HOST`, port, and buffer settings. Update this file (or create `config_local.py`) to match the actual Pi host IP/hostname before deployment. This file is ignored by Git once renamed to `config_local.py`.
   - `secrets.py`: Wi-Fi SSID/password. This file is explicitly ignored; do not commit credentials.
@@ -28,6 +28,10 @@ This repository hosts the software and documentation for a Raspberry Pi 5 + Rasp
    - Automate using a script such as `scripts/deploy.sh` that copies files, uploads assets, and restarts the Pico.
 3. **Run the host server**
    - Prefer `scripts/pico-ctl.sh` for all host operations (start/stop/status/send). This avoids FIFO blocking and shell escaping issues.
+- For auto recovery after Pi reboot, install systemd service once:
+  ```bash
+  scripts/install-systemd-service.sh
+  ```
    - Launch/start the server via script:
      ```bash
      scripts/pico-ctl.sh start
